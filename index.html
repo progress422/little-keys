@@ -34,6 +34,17 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
 .song span{color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.3px}
 .song .stars{color:var(--accent);letter-spacing:2px;font-size:13px}
 .song[aria-pressed="true"]{border-color:var(--accent);background:var(--panel2)}
+.songWrap{position:relative;flex:none;display:flex}
+.del{position:absolute;top:4px;right:4px;border:0;background:transparent;color:var(--muted);font-weight:800;font-size:16px;line-height:1;padding:4px 7px;border-radius:8px}
+.del:hover{color:var(--ink)}
+.del.confirm{background:var(--bad);color:#2a0008;font-size:12px}
+.song.add{border:2px dashed var(--line);background:transparent;align-content:center}
+.song.add b{color:var(--accent)}
+.card.imp{text-align:left;width:min(420px,100%);box-sizing:border-box}
+.card.imp h2{text-align:left}
+.field{display:grid;gap:4px;font-weight:700;font-size:13px;color:var(--muted)}
+.field input{font:inherit;color:var(--ink);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:7px 10px}
+.card .row{display:flex;justify-content:flex-end;gap:8px}
 .controls{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .seg{display:inline-flex;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:3px}
 .seg button{border:0;background:none;padding:6px 12px;border-radius:9px;font-weight:700;color:var(--muted)}
@@ -50,6 +61,8 @@ select{font:inherit;font-weight:700;color:var(--ink);background:var(--panel2);bo
 .stage{position:relative;flex:1;min-height:280px;border-radius:18px;overflow:hidden;background:linear-gradient(180deg,#0d1130,#18205a);border:1px solid var(--line)}
 canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
 .overlay{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;padding:16px}
+.overlay{overflow:auto}
+.card{max-height:100%;overflow:auto;box-sizing:border-box}
 .card{pointer-events:auto;background:rgba(27,35,80,.94);border:1px solid var(--line);border-radius:20px;padding:20px 24px;max-width:420px;text-align:center;display:grid;gap:10px;box-shadow:0 20px 60px rgba(0,0,0,.4)}
 .card h2{font-family:var(--display);font-weight:600;margin:0;font-size:26px;text-wrap:balance}
 .card p{margin:0;color:var(--muted);line-height:1.45}
@@ -224,7 +237,9 @@ function finish(){
    <div><button class="btn primary" id="againBtn">Play again</button></div></div>`;
   $('againBtn').onclick=()=>{reset();start()};
 }
-function reset(){S.notes=parse(S.song.src);S.rests=S.notes.rests;S.b=-4;S.waiting=false;S.finished=false;S.stats={perfect:0,good:0,miss:0,wrong:0};S.streak=0;S.pops=[];
+function reset(){
+  if(S.song.custom){S.notes=S.song.notes.map(n=>({midi:n.midi,start:n.start,dur:n.dur,state:0}));S.rests=S.song.rests||[]}
+  else{S.notes=parse(S.song.src);S.rests=S.notes.rests}S.b=-4;S.waiting=false;S.finished=false;S.stats={perfect:0,good:0,miss:0,wrong:0};S.streak=0;S.pops=[];
   const ms=S.notes.map(n=>n.midi);let lo=Math.min(...ms)-2,hi=Math.max(...ms)+2;
   while(isBlack(lo))lo--;while(isBlack(hi))hi++;while(hi-lo<16){lo--;hi++;while(isBlack(lo))lo--;while(isBlack(hi))hi++}
   S.lo=lo;S.hi=hi;layoutKeys();updateScore()}
@@ -241,14 +256,154 @@ $('modeWait').onclick=()=>setMode('wait');$('modePlay').onclick=()=>setMode('pla
 $('tempo').oninput=e=>{S.tempo=e.target.value/100;$('tempoOut').textContent=e.target.value+'%'};
 
 function renderShelf(){const sh=$('shelf');sh.innerHTML='';
-  for(const s of SONGS){const b=document.createElement('button');b.className='song';b.id='song-'+s.id;b.setAttribute('aria-pressed',S.song&&S.song.id===s.id);
+  for(const s of allSongs()){const wrap=document.createElement('div');wrap.className='songWrap';
+    const b=document.createElement('button');b.className='song';b.id='song-'+s.id;b.setAttribute('aria-pressed',!!(S.song&&S.song.id===s.id));
     const st=best[s.id+':'+S.mode]||0;
-    b.innerHTML=`<b>${s.title}</b><span>${['','EASY','MEDIUM','HARDER'][s.level]} · ${s.bpm} BPM</span><span class="stars">${'★'.repeat(st)}${'☆'.repeat(3-st)}</span>`;
-    b.onclick=()=>{S.song=s;reset();pause();intro();renderShelf()};sh.appendChild(b)}}
+    b.innerHTML=`<b>${esc(s.title)}</b><span>${s.custom?'MY SONG':['','EASY','MEDIUM','HARDER'][s.level]} · ${s.bpm} BPM</span><span class="stars">${'★'.repeat(st)}${'☆'.repeat(3-st)}</span>`;
+    b.onclick=()=>{S.song=s;reset();pause();intro();renderShelf()};wrap.appendChild(b);
+    if(s.custom){const x=document.createElement('button');x.className='del';x.id='del-'+s.id;x.setAttribute('aria-label','Delete '+s.title);x.textContent='×';
+      x.onclick=e=>{e.stopPropagation();
+        if(x.dataset.confirm){custom=custom.filter(c=>c.id!==s.id);saveCustom();if(S.song.id===s.id){S.song=SONGS[0];reset();pause();intro()}renderShelf()}
+        else{x.dataset.confirm='1';x.textContent='Delete?';x.classList.add('confirm');setTimeout(()=>{if(x.isConnected){delete x.dataset.confirm;x.textContent='×';x.classList.remove('confirm')}},3000)}};
+      wrap.appendChild(x)}
+    sh.appendChild(wrap)}
+  const add=document.createElement('button');add.className='song add';add.id='addSong';
+  add.innerHTML='<b>+ Load song</b><span>FROM A MIDI FILE</span>';add.onclick=()=>midiInput.click();sh.appendChild(add)}
 function intro(){overlay.innerHTML=S.mode==='wait'
  ?`<div class="card"><h2>${S.song.title}</h2><p>The notes fall down to the keys. The song waits on each note until you press the right key, so take your time.</p><div><button class="btn primary" id="goBtn">Start</button></div></div>`
  :`<div class="card"><h2>${S.song.title}</h2><p>Press each key just as its note touches the line. Lower the speed if it feels too fast.</p><div><button class="btn primary" id="goBtn">Start</button></div></div>`;
  $('goBtn').onclick=start}
+
+// ---------- MIDI file import ----------
+function readMidi(buf){
+  const d=new DataView(buf);let p=0;
+  const str=n=>{let s='';for(let i=0;i<n;i++)s+=String.fromCharCode(d.getUint8(p+i));p+=n;return s};
+  const u32=()=>{const v=d.getUint32(p);p+=4;return v},u16=()=>{const v=d.getUint16(p);p+=2;return v};
+  const vlq=()=>{let v=0,b;do{b=d.getUint8(p++);v=(v<<7)|(b&127)}while(b&128);return v};
+  if(str(4)!=='MThd')throw new Error('This isn’t a MIDI file.');
+  const hl=u32(),fmt=u16(),ntr=u16(),div=u16();p+=hl-6;
+  if(div&0x8000)throw new Error('This MIDI file uses a timing format the app can’t read.');
+  const tempos=[],tracks=[];
+  for(let t=0;t<ntr&&p+8<=d.byteLength;t++){
+    const id=str(4),len=u32(),end=Math.min(p+len,d.byteLength);
+    if(id!=='MTrk'){p=end;continue}
+    let tick=0,run=0,name='';const open=new Map(),notes=[];
+    while(p<end){
+      tick+=vlq();let st=d.getUint8(p);
+      if(st&0x80){p++;if(st<0xF0)run=st}else st=run;
+      if(st===0xFF){const ty=d.getUint8(p++),l=vlq();
+        if(ty===0x51)tempos.push({tick,us:(d.getUint8(p)<<16)|(d.getUint8(p+1)<<8)|d.getUint8(p+2)});
+        if(ty===0x03){name=str(l).trim();continue}
+        p+=l;continue}
+      if(st===0xF0||st===0xF7){p+=vlq();continue}
+      const ty=st&0xF0,ch=st&15;
+      if(ty===0xC0||ty===0xD0){p++;continue}
+      const a=d.getUint8(p++),b=d.getUint8(p++),k=ch*128+a;
+      if(ty===0x90&&b>0){const o=open.get(k);if(o)notes.push({tick:o.tick,len:Math.max(1,tick-o.tick),midi:a,vel:o.vel,ch});open.set(k,{tick,vel:b})}
+      else if(ty===0x80||ty===0x90){const o=open.get(k);if(o){notes.push({tick:o.tick,len:Math.max(1,tick-o.tick),midi:a,vel:o.vel,ch});open.delete(k)}}
+    }
+    p=end;
+    if(notes.length)tracks.push({name:name||('Track '+(tracks.length+1)),notes:notes.sort((x,y)=>x.tick-y.tick),drums:notes.every(n=>n.ch===9)});
+  }
+  tempos.sort((a,b)=>a.tick-b.tick);
+  if(!tracks.length)throw new Error('No notes were found in this file.');
+  return{div,tempos,tracks,bpm:tempos.length?60e6/tempos[0].us:120};
+}
+function tickToSec(mid){const tm=mid.tempos.length?mid.tempos:[{tick:0,us:500000}];
+  return tick=>{let s=0,last=0,us=tm[0].tick===0?tm[0].us:500000;
+    for(const t of tm){if(t.tick>=tick)break;s+=(t.tick-last)*us/mid.div/1e6;last=t.tick;us=t.us}
+    return s+(tick-last)*us/mid.div/1e6}}
+function estimateBpm(onsets){let best=100,score=-1e9;
+  for(let bpm=60;bpm<=160;bpm++){const per=60/bpm;let s=0;for(const t of onsets)s+=Math.cos(2*Math.PI*((t/per*2)%1));if(s>score){score=s;best=bpm}}
+  return best}
+// Follow the most prominent smooth line: reward loud/long notes, charge for leaps and for re-hitting a held note.
+function trackMelody(ns,grid){
+  const slots=new Map();
+  for(const n of ns){if(n.midi<52||n.midi>86||n.sec<.1)continue;const k=Math.round(n.b/grid);const sal=Math.min(n.sec,1.2)*n.vel/127;
+    const arr=slots.get(k)||[];const ex=arr.find(c=>c.midi===n.midi);if(ex){ex.sal+=sal;ex.dur=Math.max(ex.dur,n.dur)}else arr.push({midi:n.midi,sal,dur:n.dur});slots.set(k,arr)}
+  const keys=[...slots.keys()].sort((a,b)=>a-b);if(!keys.length)return[];
+  let prev=[{midi:null,score:0,path:null}];
+  for(const k of keys){const next=prev.slice();
+    for(const c of slots.get(k)){let best=null;
+      for(const s of prev){const j=s.midi==null?0:Math.abs(c.midi-s.midi);
+        const cost=(j===0?.2:0)+(j<=2?0:j<=5?j*.03:j<=9?j*.05:j*.125);
+        const sc=s.score+c.sal-cost;if(!best||sc>best.score)best={midi:c.midi,score:sc,path:{k,midi:c.midi,dur:c.dur,prev:s.path}}}
+      next.push(best)}
+    const by=new Map();for(const s of next){const b=by.get(s.midi);if(!b||s.score>b.score)by.set(s.midi,s)}
+    prev=[...by.values()].sort((a,b)=>b.score-a.score).slice(0,24)}
+  const path=[];for(let n=prev[0].path;n;n=n.prev)path.unshift(n);
+  return path.map((p,i)=>{const nx=path[i+1];let d=Math.max(grid,Math.round(p.dur/grid)*grid);if(nx)d=Math.min(d,(nx.k-p.k)*grid);return{midi:p.midi,start:p.k*grid,dur:Math.min(d,4)}});
+}
+const MAJOR=[6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88];
+function detectKey(notes){const w=new Array(12).fill(0);notes.forEach(n=>w[n.midi%12]+=n.dur);let best=0,bs=-1e9;
+  for(let k=0;k<12;k++){let s=0;for(let i=0;i<12;i++)s+=w[(i+k)%12]*MAJOR[i];if(s>bs){bs=s;best=k}}return best}
+const KEYNAMES=['C','D♭','D','E♭','E','F','F♯','G','A♭','A','B♭','B'];
+function buildSong(mid,o){
+  const ts=tickToSec(mid);
+  const raw=o.track==='all'?mid.tracks.filter(t=>!t.drums).flatMap(t=>t.notes):mid.tracks[o.track].notes;
+  // Is the file on a real beat grid (a made-up arrangement) or free timing (an audio transcription)?
+  const near=raw.filter(n=>{const f=(n.tick/mid.div*2)%1;return f<.12||f>.88}).length/raw.length;
+  const aligned=near>.6;
+  let bpm,ns;
+  if(aligned){bpm=mid.bpm;ns=raw.map(n=>({b:n.tick/mid.div,dur:n.len/mid.div,sec:ts(n.tick+n.len)-ts(n.tick),midi:n.midi,vel:n.vel}))}
+  else{const sec=raw.map(n=>({t:ts(n.tick),sec:ts(n.tick+n.len)-ts(n.tick),midi:n.midi,vel:n.vel}));
+    bpm=estimateBpm(sec.filter(n=>n.sec>.1).map(n=>n.t));const spb=60/bpm,t0=Math.min(...sec.map(n=>n.t));
+    ns=sec.map(n=>({b:(n.t-t0)/spb,dur:n.sec/spb,sec:n.sec,midi:n.midi,vel:n.vel}))}
+  ns.sort((a,b)=>a.b-b.b);
+  const grid=aligned?.25:.5;
+  let notes;
+  if(o.simplify)notes=trackMelody(ns,aligned?.5:.5);
+  else{const seen=new Set();notes=[];
+    for(const n of ns){if(n.midi<36||n.midi>96||(!aligned&&n.sec<.1))continue;const start=Math.round(n.b/grid)*grid,key=start+':'+n.midi;if(seen.has(key))continue;seen.add(key);
+      notes.push({midi:n.midi,start,dur:Math.min(4,Math.max(grid,Math.round(n.dur/grid)*grid))})}}
+  if(!notes.length)throw new Error('No playable notes were found on that track.');
+  // start at bar 1
+  const first=notes[0].start,off=aligned?Math.floor(first/4)*4:first;notes.forEach(n=>n.start-=off);
+  if(o.len>0)notes=notes.filter(n=>n.start<o.len*4);
+  // key: optionally move to C major (white keys)
+  const key=detectKey(ns.map(n=>({midi:n.midi,dur:Math.min(n.dur,4)})));let shift=0;
+  if(o.easy){shift=-key;if(shift<-6)shift+=12}
+  notes.forEach(n=>n.midi+=shift);
+  if(o.simplify){const s=notes.map(n=>n.midi).sort((a,b)=>a-b),med=s[s.length>>1],oct=Math.round((66-med)/12)*12;
+    notes.forEach(n=>n.midi=Math.min(84,Math.max(48,n.midi+oct)))}
+  // rests between melody notes, for the sheet music view
+  const rests=[];
+  if(o.simplify)for(let i=0;i<notes.length-1;i++){const end=notes[i].start+notes[i].dur,gap=notes[i+1].start-end;if(gap>=1)rests.push({start:end,dur:gap>=4?4:gap>=2?2:1})}
+  return{id:'c'+Date.now(),title:o.title||'My song',bpm:Math.round(bpm),level:0,custom:true,notes,rests,
+    info:{from:KEYNAMES[key],easy:o.easy}};
+}
+let custom=(()=>{try{return JSON.parse(localStorage.getItem('littlekeys.custom')||'[]')}catch(e){return[]}})();
+function saveCustom(){try{localStorage.setItem('littlekeys.custom',JSON.stringify(custom));return true}catch(e){return false}}
+const allSongs=()=>SONGS.concat(custom);
+const midiInput=document.createElement('input');midiInput.type='file';midiInput.accept='.mid,.midi,audio/midi,audio/x-midi';midiInput.id='midiFile';midiInput.hidden=true;document.body.appendChild(midiInput);
+midiInput.onchange=async()=>{const f=midiInput.files[0];midiInput.value='';if(!f)return;pause();
+  try{const mid=readMidi(await f.arrayBuffer());importDialog(mid,f.name.replace(/\.(mid|midi)$/i,'').replace(/[_-]+/g,' ').trim())}
+  catch(e){overlay.innerHTML=`<div class="card"><h2>Couldn’t open that file</h2><p>${e.message}</p><div><button class="btn" id="imOk">OK</button></div></div>`;$('imOk').onclick=intro}};
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function importDialog(mid,name){
+  const tr=mid.tracks.map((t,i)=>({t,i})).filter(x=>!x.t.drums);
+  if(!tr.length){overlay.innerHTML=`<div class="card"><h2>Only drums in this file</h2><p>Try a file that has a melody or piano part.</p><div><button class="btn" id="imOk">OK</button></div></div>`;$('imOk').onclick=intro;return}
+  const score=t=>t.notes.filter(n=>n.midi>=60&&n.midi<=84).length;
+  const def=tr.reduce((a,b)=>score(b.t)>score(a.t)?b:a).i;
+  const opts=tr.map(x=>`<option value="${x.i}"${x.i===def?' selected':''}>${esc(x.t.name)} (${x.t.notes.length} notes)</option>`).join('')+(tr.length>1?'<option value="all">All tracks together</option>':'');
+  overlay.innerHTML=`<div class="card imp"><h2>Add a song</h2>
+    <label class="field" for="imName">Name<input id="imName" value="${esc(name)}" maxlength="40"></label>
+    <label class="field" for="imTrack">Part<select id="imTrack">${opts}</select></label>
+    <label class="field" for="imLen">Length<select id="imLen"><option value="8">First 8 bars</option><option value="16" selected>First 16 bars</option><option value="32">First 32 bars</option><option value="0">Whole song</option></select></label>
+    <label class="ctl"><input type="checkbox" id="imSimple" checked> Melody only, one note at a time</label>
+    <label class="ctl"><input type="checkbox" id="imEasy" checked> Move to C major (mostly white keys)</label>
+    <p id="imInfo" class="hint"></p>
+    <div class="row"><button class="btn" id="imCancel">Cancel</button><button class="btn primary" id="imAdd">Add song</button></div></div>`;
+  const read=()=>({title:$('imName').value.trim(),track:$('imTrack').value==='all'?'all':+$('imTrack').value,len:+$('imLen').value,simplify:$('imSimple').checked,easy:$('imEasy').checked});
+  const preview=()=>{try{const s=buildSong(mid,read());const ch=s.notes.filter((n,i,a)=>a.some((m,j)=>j!==i&&m.start===n.start)).length;
+      $('imInfo').textContent=`${s.notes.length} notes · about ${s.bpm} BPM · ${s.info.easy&&s.info.from!=='C'?'moved from '+s.info.from+' major to C major':'key of '+s.info.from+' major'}${ch?' · has chords':''}`}
+    catch(e){$('imInfo').textContent=e.message}};
+  ['imTrack','imLen','imSimple','imEasy'].forEach(id=>$(id).onchange=preview);preview();
+  $('imCancel').onclick=intro;
+  $('imAdd').onclick=()=>{try{const s=buildSong(mid,read());custom.push(s);
+      if(!saveCustom()){custom.pop();$('imInfo').textContent='The song is too big to save on this device. Try a shorter length.';return}
+      S.song=s;reset();renderShelf();intro()}catch(e){$('imInfo').textContent=e.message}};
+}
 
 // ---------- drawing ----------
 let keys=[];
