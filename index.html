@@ -1,6 +1,6 @@
 <title>Little Keys</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Noto+Music&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 /* Layout: one-screen app. Top bar, song shelf, control row, then a falling-note stage that lands on a keyboard. Committed night-sky look. */
 :root{
@@ -42,6 +42,8 @@ label.ctl{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-si
 label.ctl output{color:var(--ink);font-variant-numeric:tabular-nums;min-width:3.2em}
 input[type=range]{accent-color:var(--accent);width:120px}
 input[type=checkbox]{accent-color:var(--accent);width:17px;height:17px}
+select{font:inherit;font-weight:700;color:var(--ink);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:6px 10px}
+.headR{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .spacer{flex:1}
 .score{display:flex;gap:14px;font-weight:800;font-variant-numeric:tabular-nums;font-size:14px}
 .score em{font-style:normal;color:var(--muted);font-weight:700;margin-right:4px;font-size:12px;text-transform:uppercase;letter-spacing:.6px}
@@ -62,9 +64,14 @@ canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;displa
 <div class="app">
   <header>
     <div class="brand"><h1>Little <span>Keys</span></h1><small>Practice with your own keyboard</small></div>
-    <div class="midi">
-      <div class="pill" id="midiPill"><i></i><span id="midiText">No piano connected</span></div>
-      <button class="btn" id="connectBtn">Connect piano</button>
+    <div class="headR">
+      <label class="ctl" for="view">View
+        <select id="view"><option value="fall">Falling notes</option><option value="sheet">Sheet music</option></select>
+      </label>
+      <div class="midi">
+        <div class="pill" id="midiPill"><i></i><span id="midiText">No piano connected</span></div>
+        <button class="btn" id="connectBtn">Connect piano</button>
+      </div>
     </div>
   </header>
 
@@ -107,7 +114,7 @@ const SONGS=[
  {id:'jingle',title:'Jingle Bells',level:3,bpm:110,src:'E4:1 E4:1 E4:2 E4:1 E4:1 E4:2 E4:1 G4:1 C4:1.5 D4:.5 E4:4 F4:1 F4:1 F4:1.5 F4:.5 F4:1 E4:1 E4:1 E4:.5 E4:.5 E4:1 D4:1 D4:1 E4:1 D4:2 G4:2'},
 ];
 const toMidi=s=>{const m=s.match(/^([A-G])(#|b)?(-?\d)$/);const pc={C:0,D:2,E:4,F:5,G:7,A:9,B:11}[m[1]]+(m[2]==='#'?1:m[2]==='b'?-1:0);return (+m[3]+1)*12+pc};
-function parse(src){let b=0;const out=[];for(const t of src.trim().split(/\s+/)){const[n,d]=t.split(':');const dur=+d;if(n!=='R')out.push({midi:toMidi(n),start:b,dur,state:0});b+=dur}return out}
+function parse(src){let b=0;const out=[],rests=[];for(const t of src.trim().split(/\s+/)){const[n,d]=t.split(':');const dur=+d;if(n!=='R')out.push({midi:toMidi(n),start:b,dur,state:0});else rests.push({start:b,dur});b+=dur}out.rests=rests;return out}
 
 // ---------- storage ----------
 const best=(()=>{try{return JSON.parse(localStorage.getItem('littlekeys.best')||'{}')}catch(e){return{}}})();
@@ -165,7 +172,9 @@ cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
 // ---------- game logic ----------
 const bpm=()=>S.song.bpm*S.tempo;
 const secs=beats=>beats*60/bpm();
-function pop(text,color,m){const k=keyRect(m);S.pops.push({text,color,x:k?k.x+k.w/2:W/2,y:hitY()-20,t:0})}
+function pop(text,color,m){
+  if(S.view==='sheet'){S.pops.push({text,color,x:SH.playX+SH.sp*4,y:SH.top,t:0});return}
+  const k=keyRect(m);S.pops.push({text,color,x:k?k.x+k.w/2:W/2,y:hitY()-20,t:0})}
 function hit(n,grade){n.state=grade==='perfect'?1:2;S.stats[grade]++;S.streak++;S.keyGlow.set(n.midi,1);
   pop(grade==='perfect'?(S.streak>=5&&S.streak%5===0?S.streak+' in a row!':'Perfect!'):'Good',grade==='perfect'?'#ffc94d':'#5fe0a4',n.midi);updateScore()}
 function judge(m){
@@ -215,7 +224,7 @@ function finish(){
    <div><button class="btn primary" id="againBtn">Play again</button></div></div>`;
   $('againBtn').onclick=()=>{reset();start()};
 }
-function reset(){S.notes=parse(S.song.src);S.b=-4;S.waiting=false;S.finished=false;S.stats={perfect:0,good:0,miss:0,wrong:0};S.streak=0;S.pops=[];
+function reset(){S.notes=parse(S.song.src);S.rests=S.notes.rests;S.b=-4;S.waiting=false;S.finished=false;S.stats={perfect:0,good:0,miss:0,wrong:0};S.streak=0;S.pops=[];
   const ms=S.notes.map(n=>n.midi);let lo=Math.min(...ms)-2,hi=Math.max(...ms)+2;
   while(isBlack(lo))lo--;while(isBlack(hi))hi++;while(hi-lo<16){lo--;hi++;while(isBlack(lo))lo--;while(isBlack(hi))hi++}
   S.lo=lo;S.hi=hi;layoutKeys();updateScore()}
@@ -255,7 +264,85 @@ function keyAt(x,y){const top=hitY();if(y<top)return null;const bh=kbH()*.62;
 function rr(x,y,w,h,r){ctx.beginPath();ctx.roundRect?ctx.roundRect(x,y,w,h,r):ctx.rect(x,y,w,h)}
 function draw(){
   ctx.setTransform(DPR,0,0,DPR,0,0);ctx.clearRect(0,0,W,H);if(!S.song)return;
-  const hy=hitY(),ppb=Math.max(hy/4.5,40);
+  const hy=hitY();
+  if(S.view==='sheet')drawSheet(hy);else drawFall(hy);
+  drawKeys(hy);drawPops();
+}
+
+// ---------- sheet music view ----------
+const LETTER_STEP={0:0,2:1,4:2,5:3,7:4,9:5,11:6};
+function staffPos(m){let pc=m%12,acc=false;if(LETTER_STEP[pc]==null){pc-=1;acc=true}return{step:(Math.floor(m/12)-1)*7+LETTER_STEP[pc],acc}}
+const SH={playX:0,top:0,sp:12};
+const MUSIC_FONT='"Noto Music","Bravura","Segoe UI Symbol","Noto Sans Symbols 2",serif';
+const INK='#1b1f3a',PAPER='#fbfaff',TARGET='#3b5bff',DONE='#1fa971',MISSED='#b9bcd6';
+function drawRest(x,dur,yOf,sp){const mid=yOf(34);ctx.fillStyle=INK;ctx.strokeStyle=INK;ctx.lineJoin='round';ctx.lineCap='round';
+  if(dur>=4)ctx.fillRect(x-sp*.6,yOf(36),sp*1.2,sp*.5);
+  else if(dur>=2)ctx.fillRect(x-sp*.6,mid-sp*.5,sp*1.2,sp*.5);
+  else if(dur>=1){ctx.lineWidth=sp*.3;ctx.beginPath();ctx.moveTo(x-sp*.25,mid-sp*1.5);ctx.lineTo(x+sp*.35,mid-sp*.7);ctx.lineTo(x-sp*.25,mid+sp*.1);ctx.lineTo(x+sp*.35,mid+sp*.8);ctx.quadraticCurveTo(x-sp*.6,mid+sp*.6,x-sp*.05,mid+sp*1.5);ctx.stroke()}
+  else{ctx.beginPath();ctx.arc(x-sp*.2,mid-sp*.5,sp*.25,0,7);ctx.fill();ctx.lineWidth=sp*.15;ctx.beginPath();ctx.moveTo(x-sp*.2,mid-sp*.4);ctx.lineTo(x+sp*.4,mid-sp*.6);ctx.lineTo(x,mid+sp*.8);ctx.stroke()}
+  ctx.lineCap='butt'}
+function drawSheet(hy){
+  const sp=Math.max(8,Math.min(18,hy/13.5));
+  const mid=hy/2,yOf=s=>mid-(s-34)*sp/2,topL=yOf(38),botL=yOf(30);
+  const x0=10,x1=W-10,thin=Math.max(1,sp*.09);
+  // paper band
+  ctx.fillStyle=PAPER;rr(x0,topL-sp*4.2,x1-x0,sp*12.4,14);ctx.fill();
+  // staff lines
+  ctx.strokeStyle='#2a2e4a';ctx.lineWidth=thin;
+  for(let s=30;s<=38;s+=2){const y=yOf(s);ctx.beginPath();ctx.moveTo(x0+12,y);ctx.lineTo(x1-12,y);ctx.stroke()}
+  // clef and time signature
+  ctx.fillStyle=INK;ctx.textAlign='left';ctx.textBaseline='alphabetic';
+  ctx.font=`${sp*4}px ${MUSIC_FONT}`;ctx.fillText('\u{1D11E}',x0+18,yOf(32));
+  const tsx=x0+18+sp*4.2;ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`800 ${sp*2.1}px Nunito, system-ui, sans-serif`;
+  ctx.fillText('4',tsx,yOf(36));ctx.fillText('4',tsx,yOf(32));
+  const clipX=tsx+sp*1.6,playX=clipX+Math.max(30,W*.08),ppb=Math.max(sp*5,Math.min(140,W/9));
+  SH.playX=playX;SH.top=topL-sp*3;SH.sp=sp;
+  const X=beat=>playX+(beat-S.b)*ppb;
+  ctx.save();ctx.beginPath();ctx.rect(clipX,0,x1-12-clipX,hy);ctx.clip();
+  // bar lines
+  const last=S.notes[S.notes.length-1],end=Math.ceil((last.start+last.dur)/4)*4,barOff=Math.min(ppb*.4,sp*1.6);
+  ctx.strokeStyle='#2a2e4a';
+  for(let bt=4;bt<=end;bt+=4){const x=X(bt)-barOff;if(x<clipX-10||x>x1)continue;
+    ctx.lineWidth=Math.max(1,sp*.12);ctx.beginPath();ctx.moveTo(x,topL);ctx.lineTo(x,botL);ctx.stroke();
+    if(bt===end){ctx.lineWidth=sp*.4;ctx.beginPath();ctx.moveTo(x+sp*.6,topL);ctx.lineTo(x+sp*.6,botL);ctx.stroke()}}
+  // rests
+  for(const r of S.rests||[]){const x=X(r.start);if(x>clipX-30&&x<x1+30)drawRest(x,r.dur,yOf,sp)}
+  // notes
+  const next=S.notes.find(n=>n.state===0),rx=sp*.62,ry=sp*.44,lw=Math.max(1,sp*.12);
+  for(const n of S.notes){const x=X(n.start);if(x<clipX-40||x>x1+40)continue;
+    const{step,acc}=staffPos(n.midi),y=yOf(step);
+    const isTarget=n.state===0&&next&&n.start===next.start;
+    const col=n.state===1||n.state===2?DONE:n.state===3?MISSED:isTarget?TARGET:INK;
+    ctx.strokeStyle=col;ctx.fillStyle=col;ctx.lineWidth=lw;
+    const ledger=yy=>{ctx.beginPath();ctx.moveTo(x-sp*1.1,yy);ctx.lineTo(x+sp*1.1,yy);ctx.stroke()};
+    for(let s=28;s>=step;s-=2)ledger(yOf(s));for(let s=40;s<=step;s+=2)ledger(yOf(s));
+    if(isTarget&&S.waiting){ctx.shadowColor=col;ctx.shadowBlur=16}
+    ctx.beginPath();ctx.ellipse(x,y,rx,ry,-.35,0,Math.PI*2);
+    if(n.dur>=2){ctx.lineWidth=sp*.2;ctx.stroke();ctx.lineWidth=lw}else ctx.fill();
+    ctx.shadowBlur=0;
+    if(n.dur<4){const up=step<34,sx=up?x+rx-sp*.08:x-rx+sp*.08,ey=up?y-sp*3.4:y+sp*3.4;
+      ctx.beginPath();ctx.moveTo(sx,y);ctx.lineTo(sx,ey);ctx.stroke();
+      if(n.dur<1){ctx.lineWidth=sp*.22;ctx.beginPath();ctx.moveTo(sx,ey);ctx.quadraticCurveTo(sx+sp*1.1,up?ey+sp*1.2:ey-sp*1.2,sx+sp*.8,up?ey+sp*2.4:ey-sp*2.4);ctx.stroke();ctx.lineWidth=lw}}
+    if([.75,1.5,3].includes(n.dur)){ctx.beginPath();ctx.arc(x+rx+sp*.5,y-(step%2===0?sp*.5:0),sp*.18,0,7);ctx.fill()}
+    if(acc){ctx.font=`700 ${sp*1.8}px system-ui, sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('♯',x-rx-sp*.9,y)}
+    // note name bubble above the staff
+    const by=Math.min(topL-sp*2,y-sp*4.4);
+    ctx.globalAlpha=n.state===0?1:.4;ctx.fillStyle=COLORS[n.midi%12];ctx.beginPath();ctx.arc(x,by,sp*.85,0,7);ctx.fill();
+    ctx.fillStyle=INK;ctx.font=`800 ${sp*1.05}px Nunito, system-ui, sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(NAMES[n.midi%12],x,by+1);ctx.globalAlpha=1}
+  ctx.restore();
+  // fade notes that have passed the playhead
+  const fg=ctx.createLinearGradient(clipX,0,playX,0);fg.addColorStop(0,'rgba(251,250,255,.92)');fg.addColorStop(1,'rgba(251,250,255,0)');
+  ctx.fillStyle=fg;ctx.fillRect(clipX,topL-sp*4.2,playX-clipX,sp*12.4);
+  // playhead
+  const pg=ctx.createLinearGradient(playX-sp*2,0,playX,0);pg.addColorStop(0,'rgba(59,91,255,0)');pg.addColorStop(1,'rgba(59,91,255,.22)');
+  ctx.fillStyle=pg;ctx.fillRect(playX-sp*2,topL-sp*3.6,sp*2,sp*11.2);
+  ctx.fillStyle=TARGET;ctx.fillRect(playX-1.5,topL-sp*3.6,3,sp*11.2);
+}
+
+// ---------- falling notes view ----------
+function drawFall(hy){
+  const ppb=Math.max(hy/4.5,40);
   // lanes
   ctx.fillStyle='rgba(255,255,255,.03)';for(const k of keys)if(!k.black&&k.m%12===0)ctx.fillRect(k.x,0,1,hy);
   // beat lines
@@ -275,7 +362,12 @@ function draw(){
   // hit line
   ctx.fillStyle='rgba(255,201,77,.9)';ctx.fillRect(0,hy-2,W,3);
   const g=ctx.createLinearGradient(0,hy-24,0,hy);g.addColorStop(0,'rgba(255,201,77,0)');g.addColorStop(1,'rgba(255,201,77,.18)');ctx.fillStyle=g;ctx.fillRect(0,hy-24,W,24);
-  // keyboard
+}
+
+// ---------- keyboard ----------
+function drawKeys(hy){
+  const next=S.notes.find(n=>n.state===0);
+  ctx.textAlign='center';ctx.textBaseline='middle';
   const kh=kbH(),bh=kh*.62;const targets=new Set(S.waiting&&next?S.notes.filter(n=>n.state===0&&n.start===next.start).map(n=>n.midi):[]);
   const pulse=.5+.5*Math.sin(performance.now()/180);
   for(const k of keys){if(k.black)continue;const on=S.pressed.has(k.m),glow=S.keyGlow.get(k.m)||0;
@@ -286,14 +378,21 @@ function draw(){
   for(const k of keys){if(!k.black)continue;const on=S.pressed.has(k.m);
     ctx.fillStyle=on?COLORS[k.m%12]:'#1a1d33';rr(k.x,hy+2,k.w,bh,4);ctx.fill();
     if(targets.has(k.m)){ctx.fillStyle=COLORS[k.m%12];ctx.globalAlpha=.4+.4*pulse;rr(k.x,hy+2,k.w,bh,4);ctx.fill();ctx.globalAlpha=1}}
-  // pops
-  ctx.font='600 20px Fredoka, system-ui, sans-serif';
+}
+function drawPops(){
+  ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='600 20px Fredoka, system-ui, sans-serif';
   for(const p of S.pops){ctx.globalAlpha=1-p.t/.9;ctx.fillStyle=p.color;ctx.fillText(p.text,p.x,p.y-p.t*40)}ctx.globalAlpha=1;
 }
 function resize(){DPR=window.devicePixelRatio||1;W=stage.clientWidth;H=stage.clientHeight;cv.width=W*DPR;cv.height=H*DPR;if(S.song)layoutKeys()}
 new ResizeObserver(resize).observe(stage);
 let last=performance.now();
 function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;update(dt);draw();requestAnimationFrame(loop)}
+
+// view select
+try{S.view=localStorage.getItem('littlekeys.view')||'fall'}catch(e){S.view='fall'}
+$('view').value=S.view;
+$('view').onchange=e=>{S.view=e.target.value;S.pops=[];try{localStorage.setItem('littlekeys.view',S.view)}catch(err){}};
+try{document.fonts.load('40px "Noto Music"','\u{1D11E}')}catch(e){}
 
 // boot
 S.song=SONGS[3];resize();reset();S.b=-1.5;renderShelf();intro();requestAnimationFrame(loop);
